@@ -1,32 +1,29 @@
 import { ChangeDetectionStrategy, Component, computed, effect, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
-/**
- * 円形の見た目で遊ぶ8x8リバーシ（対人戦のみ）
- * - 右側に盤を最大化（正方エリアに収め、円形クリッピング）
- * - 左側に手番/スコア/操作
- * - 盤サイズは親の領域いっぱいでレスポンシブ
- */
 type Cell = 0 | 1 | -1; // 0: empty, 1: black, -1: white
 type Pos = { r: number; c: number };
 
+// 盤は8x8のマスだが、交点は9x9（0..8）
 const SIZE = 8;
+const POINTS = SIZE + 1;
 const DIRS: Pos[] = [
   { r: -1, c: 0 }, { r: 1, c: 0 }, { r: 0, c: -1 }, { r: 0, c: 1 },
   { r: -1, c: -1 }, { r: -1, c: 1 }, { r: 1, c: -1 }, { r: 1, c: 1 }
 ];
 
-function inBoard(r: number, c: number) {
-  return r >= 0 && r < SIZE && c >= 0 && c < SIZE;
+function inPoints(r: number, c: number) {
+  return r >= 0 && r < POINTS && c >= 0 && c < POINTS;
 }
 
-// 初期配置
+// 交点ベースの初期配置（中央の4交点に斜め対称で配置）
 function initialBoard(): Cell[][] {
-  const b: Cell[][] = Array.from({ length: SIZE }, () => Array<Cell>(SIZE).fill(0));
-  b[3][3] = -1;
-  b[3][4] = 1;
-  b[4][3] = 1;
-  b[4][4] = -1;
+  const b: Cell[][] = Array.from({ length: POINTS }, () => Array<Cell>(POINTS).fill(0));
+  // 中央は (4,4) 周辺4点に従来の配置を合わせる
+  b[4][4] = -1; // 白
+  b[4][5] = 1;  // 黒
+  b[5][4] = 1;  // 黒
+  b[5][5] = -1; // 白
   return b;
 }
 
@@ -37,24 +34,24 @@ function cloneBoard(b: Cell[][]) {
 function flipsIfPlace(b: Cell[][], r: number, c: number, player: Cell): Pos[] {
   if (b[r][c] !== 0) return [];
   const res: Pos[] = [];
-  DIRS.forEach(d => {
+  for (const d of DIRS) {
     const maybe: Pos[] = [];
     let nr = r + d.r, nc = c + d.c;
-    while (inBoard(nr, nc) && b[nr][nc] === (player === 1 ? -1 : 1)) {
+    while (inPoints(nr, nc) && b[nr][nc] === (player === 1 ? -1 : 1)) {
       maybe.push({ r: nr, c: nc });
       nr += d.r; nc += d.c;
     }
-    if (inBoard(nr, nc) && b[nr][nc] === player && maybe.length) {
+    if (inPoints(nr, nc) && b[nr][nc] === player && maybe.length) {
       res.push(...maybe);
     }
-  });
+  }
   return res;
 }
 
 function legalMoves(b: Cell[][], player: Cell): Pos[] {
   const moves: Pos[] = [];
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE; c++) {
+  for (let r = 0; r < POINTS; r++) {
+    for (let c = 0; c < POINTS; c++) {
       if (flipsIfPlace(b, r, c, player).length) moves.push({ r, c });
     }
   }
@@ -68,7 +65,7 @@ function legalMoves(b: Cell[][], player: Cell): Pos[] {
   template: `
     <div class="wrap">
       <aside class="left">
-        <h1 class="title">Nip - 円形リバーシ</h1>
+        <h1 class="title">Nip - 円形リバーシ（交点置き）</h1>
         <div class="panel">
           <div class="row">
             <span class="label">手番</span>
@@ -106,16 +103,14 @@ function legalMoves(b: Cell[][], player: Cell): Pos[] {
 
           <p class="hint">
             対人戦のみ：同じ端末で交互に石を置いてください。<br>
-            置けるマスは淡いハイライトで表示されます。
+            置ける交点は淡いハイライトで表示されます。
           </p>
         </div>
       </aside>
 
       <main class="board-area">
-        <!-- 正方形コンテナに円形クリッピングした盤を最大化 -->
         <div class="square">
           <svg class="board" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" (contextmenu)="$event.preventDefault()">
-            <!-- 黒背景の上に円形の盤（深緑） -->
             <defs>
               <clipPath id="circleClip">
                 <circle cx="50" cy="50" r="48"></circle>
@@ -125,45 +120,43 @@ function legalMoves(b: Cell[][], player: Cell): Pos[] {
             <rect x="0" y="0" width="100" height="100" fill="#000"/>
             <g clip-path="url(#circleClip)">
               <rect x="0" y="0" width="100" height="100" fill="#0d401f"/>
-              <!-- 8x8グリッドを円内に描画（柔らかな角の印象を出すため線はやや淡く太め） -->
+
+              <!-- 8x8グリッド線 -->
               <g stroke="#b9d7be" stroke-width="0.4" stroke-linecap="round" opacity="0.7">
-                @for (i of rows; track i) {
+                @for (i of gridIdx; track i) {
                   <line [attr.x1]="grid(0)" [attr.y1]="grid(i)" [attr.x2]="grid(8)" [attr.y2]="grid(i)"></line>
                   <line [attr.x1]="grid(i)" [attr.y1]="grid(0)" [attr.x2]="grid(i)" [attr.y2]="grid(8)"></line>
                 }
-                <!-- 外周に柔らかな縁 -->
                 <circle cx="50" cy="50" r="48" fill="none" stroke="#e3f2e6" stroke-width="1.2"></circle>
               </g>
 
-              <!-- ハイライト（合法手） -->
+              <!-- 合法手の交点ハイライト -->
               <g opacity="0.35">
                 @for (m of legalMovesForTurn(); track m.r + '-' + m.c) {
-                  <rect class="hint-cell"
-                        [attr.x]="cellX(m.c)+1"
-                        [attr.y]="cellY(m.r)+1"
-                        [attr.width]="cellSize-2"
-                        [attr.height]="cellSize-2"
-                        rx="2" ry="2"
-                        fill="#9ad4a0" />
+                  <circle class="hint-point"
+                          [attr.cx]="pointX(m.c)"
+                          [attr.cy]="pointY(m.r)"
+                          [attr.r]="hintR"
+                          fill="#9ad4a0" />
                 }
               </g>
 
-              <!-- セルのクリック領域 -->
+              <!-- クリック領域（交点近傍） -->
               <g>
-                @for (r of rows; track r) {
-                  @for (c of cols; track c) {
-                    <rect class="hit" [attr.x]="cellX(c)" [attr.y]="cellY(r)" [attr.width]="cellSize" [attr.height]="cellSize"
-                          fill="transparent" (click)="place(r,c)"></rect>
+                @for (r of points; track r) {
+                  @for (c of points; track c) {
+                    <circle class="hit" [attr.cx]="pointX(c)" [attr.cy]="pointY(r)" [attr.r]="hitR"
+                            fill="transparent" (click)="place(r,c)"></circle>
                   }
                 }
               </g>
 
-              <!-- 石 -->
+              <!-- 石（交点に配置） -->
               <g>
-                @for (r of rows; track r) {
-                  @for (c of cols; track c) {
+                @for (r of points; track r) {
+                  @for (c of points; track c) {
                     @if (board()[r][c] !== 0) {
-                      <circle [attr.cx]="cellCenterX(c)" [attr.cy]="cellCenterY(r)" [attr.r]="discR"
+                      <circle [attr.cx]="pointX(c)" [attr.cy]="pointY(r)" [attr.r]="discR"
                               [attr.fill]="board()[r][c]===1 ? '#101010' : '#f5f5f5'"
                               stroke="rgba(255,255,255,0.18)" stroke-width="0.3"/>
                     }
@@ -186,27 +179,9 @@ function legalMoves(b: Cell[][], player: Cell): Pos[] {
       height: 100vh;
       box-sizing: border-box;
     }
-    .left {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      align-items: flex-start;
-    }
-    .title {
-      font-size: 24px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-    }
-    .panel {
-      width: 100%;
-      background: #0b0b0b;
-      border: 1px solid #1e1e1e;
-      border-radius: 12px;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
+    .left { display: flex; flex-direction: column; gap: 16px; align-items: flex-start; }
+    .title { font-size: 24px; font-weight: 700; letter-spacing: 0.02em; }
+    .panel { width: 100%; background: #0b0b0b; border: 1px solid #1e1e1e; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .label { color: #b2dfdb; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
     .turn { display: flex; align-items: center; gap: 8px; }
@@ -222,63 +197,47 @@ function legalMoves(b: Cell[][], player: Cell): Pos[] {
     .status .pass { color: #ffe082; }
     .status .ok { color: #a5d6a7; }
     .buttons { display: flex; gap: 8px; }
-    .btn {
-      background: #1b5e20;
-      color: #e8f5e9;
-      border: none;
-      padding: 10px 14px;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: transform 120ms ease, opacity 120ms ease;
-    }
+    .btn { background: #1b5e20; color: #e8f5e9; border: none; padding: 10px 14px; border-radius: 10px; cursor: pointer; transition: transform 120ms ease, opacity 120ms ease; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn:hover:not(:disabled) { transform: translateY(-1px); }
 
     .board-area { display: grid; place-items: center; }
     .square { width: 100%; height: 100%; max-width: 100%; display: grid; place-items: center; }
-    /* アスペクト比を正方形に保つために内側要素で制御 */
-    .board {
-      width: min(100%, calc(100vh - 32px)); /* 画面高に合わせて最大化 */
-      height: auto;
-      max-height: calc(100vh - 32px);
-      border-radius: 16px;
-      display: block;
-      background: transparent;
-    }
+    .board { width: min(100%, calc(100vh - 32px)); height: auto; max-height: calc(100vh - 32px); border-radius: 16px; display: block; background: transparent; }
 
-    /* タブレット横表示向けの最小サイズ調整 */
-    @media (min-width: 900px) {
-      .wrap { grid-template-columns: 320px 1fr; }
-    }
-
-    /* SVG上のセル */
-    .hint-cell { pointer-events: none; }
+    .hint-point { pointer-events: none; }
     .hit { cursor: pointer; }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ReversiBoardComponent {
-  // ボード状態
+  // 交点ベースのボード状態
   board = signal<Cell[][]>(initialBoard());
   turn = signal<Cell>(1); // 1: 黒, -1: 白
 
-  rows = Array.from({ length: SIZE + 1 }, (_, i) => i);
-  cols = Array.from({ length: SIZE + 1 }, (_, i) => i);
+  // 描画用
+  gridIdx = Array.from({ length: SIZE + 1 }, (_, i) => i); // 0..8 for lines
+  points = Array.from({ length: POINTS }, (_, i) => i);    // 0..8 for intersections
 
-  cellSize = 100 / SIZE;
-  discR = (this.cellSize * 0.42);
+  // 幾何
+  cellSize = 100 / SIZE;           // マス幅（グリッド線の間隔）
+  margin = 1;                      // 外周余白(%)
+  point = (i: number) => this.margin + i * (this.cellSize); // 交点の座標(%)
+  grid = (i: number) => this.point(i); // 線の位置(%)
 
-  grid = (i: number) => 1 + i * (this.cellSize); // 1% から開始して外周の縁を残す
-  cellX = (c: number) => this.grid(c);
-  cellY = (r: number) => this.grid(r);
-  cellCenterX = (c: number) => this.cellX(c) + this.cellSize / 2;
-  cellCenterY = (r: number) => this.cellY(r) + this.cellSize / 2;
+  // 半径設定（相対%）
+  discR = (this.cellSize * 0.28);
+  hintR = (this.cellSize * 0.18);
+  hitR = (this.cellSize * 0.45);
+
+  pointX = (c: number) => this.point(c);
+  pointY = (r: number) => this.point(r);
 
   legalMovesForTurn = computed(() => legalMoves(this.board(), this.turn()));
   score = computed(() => {
     const b = this.board();
     let black = 0, white = 0;
-    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    for (let r = 0; r < POINTS; r++) for (let c = 0; c < POINTS; c++) {
       if (b[r][c] === 1) black++;
       else if (b[r][c] === -1) white++;
     }
@@ -298,19 +257,18 @@ export class ReversiBoardComponent {
     flips.forEach(p => nb[p.r][p.c] = this.turn());
     this.board.set(nb);
 
-    // 手番交代。置けない場合は自動パス。
+    // 手番交代（置けない場合は自動パス、両者不可で終局）
     const next = (this.turn() === 1 ? -1 : 1) as Cell;
     if (legalMoves(nb, next).length > 0) {
       this.turn.set(next);
     } else if (legalMoves(nb, this.turn()).length === 0) {
-      // 両者置けない → 終局
-      this.turn.set(next); // 表示上は切り替わるが gameOver が true になる
+      this.turn.set(next);
     }
   }
 
   pass() {
     if (this.gameOver()) return;
-    if (this.legalMovesForTurn().length > 0) return; // 置けるならパス不可
+    if (this.legalMovesForTurn().length > 0) return;
     this.turn.set(this.turn() === 1 ? -1 : 1);
   }
 
@@ -319,7 +277,6 @@ export class ReversiBoardComponent {
     this.turn.set(1);
   }
 
-  // デバッグ：終局時に勝敗をコンソールへ
   _log = effect(() => {
     if (this.gameOver()) {
       const s = this.score();
