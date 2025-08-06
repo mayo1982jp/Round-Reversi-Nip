@@ -3,7 +3,7 @@
 このリポジトリは 最小構成 Angular アプリです。現在は「角のない円形のリバーシ（Nip）」の対人戦モードを搭載しています。
 
 遊べるリンク
-- こちらで遊べます: https://mayo1982jp/github.io/Round-Reversi-Nip
+- こちらで遊べます: https://mayo1982jp.github.io/Round-Reversi-Nip
 
 概要
 - 最新の安定版 Angular (v17)
